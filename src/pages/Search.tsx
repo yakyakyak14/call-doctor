@@ -19,7 +19,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import AuthModal from "@/components/AuthModal";
 import { Link } from "react-router-dom";
-import { startVapiCall } from "@/integrations/vapi";
 
 import docFemale1 from "@/assets/doctor-female-nigerian.jpg";
 import docMale1 from "@/assets/doctor-male-nigerian.jpg";
@@ -145,10 +144,6 @@ const Search = () => {
   const [bookingNote, setBookingNote] = useState("");
   const { toast } = useToast();
   const [authOpen, setAuthOpen] = useState(false);
-  const [vapiOpen, setVapiOpen] = useState(false);
-  const [vapiNumber, setVapiNumber] = useState("+234");
-  const [vapiLoading, setVapiLoading] = useState(false);
-  const [vapiDoctor, setVapiDoctor] = useState<Doctor | null>(null);
 
   // Load doctors from Supabase (optional). Fallback to local mock data.
   const { data: doctorRows, isLoading, isError, refetch } = useQuery({
@@ -443,9 +438,6 @@ const Search = () => {
                           <a href={`tel:+234800CALLDOC`}>
                             <Button size="sm" className="bg-primary">Call</Button>
                           </a>
-                          <Button size="sm" variant="secondary" onClick={() => { setVapiDoctor(d); setVapiOpen(true); }}>
-                            AI Call
-                          </Button>
                         </div>
                       </div>
                     </div>
@@ -503,9 +495,6 @@ const Search = () => {
                     <Link to={`/doctor/${openProfile.id}`} state={{ doctor: openProfile }}>
                       <Button variant="ghost">Full profile</Button>
                     </Link>
-                    <Button variant="secondary" onClick={() => { setVapiDoctor(openProfile); setVapiOpen(true); }}>
-                      AI Call
-                    </Button>
                   </div>
                 </div>
               </>
@@ -600,47 +589,6 @@ const Search = () => {
 
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
 
-        {/* Vapi AI Call Dialog */}
-        <Dialog open={vapiOpen} onOpenChange={setVapiOpen}>
-          <DialogContent className="sm:max-w-[480px]">
-            <DialogHeader>
-              <DialogTitle>Start AI Call</DialogTitle>
-              <DialogDescription>
-                Enter the recipient's phone number in E.164 format (e.g., +2348012345678).
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="vapi-number">Phone number</Label>
-                <Input id="vapi-number" value={vapiNumber} onChange={(e) => setVapiNumber(e.target.value)} placeholder="+2348012345678" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                disabled={vapiLoading}
-                onClick={async () => {
-                  if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
-                    toast({ title: "Invalid number", description: "Provide an E.164 number, e.g., +234..." });
-                    return;
-                  }
-                  try {
-                    setVapiLoading(true);
-                    const res = await startVapiCall({ customerNumber: vapiNumber, metadata: { doctorId: vapiDoctor?.id, source: "SearchPage" } });
-                    const callId = (res as any)?.data?.id;
-                    toast({ title: "Call started", description: callId ? `Call ID: ${callId}` : "The AI assistant is placing your call." });
-                    setVapiOpen(false);
-                  } catch (e: any) {
-                    toast({ title: "Failed to start call", description: e.message || "Please try again." });
-                  } finally {
-                    setVapiLoading(false);
-                  }
-                }}
-              >
-                {vapiLoading ? "Starting..." : "Start AI Call"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </main>
       <Footer />
     </div>

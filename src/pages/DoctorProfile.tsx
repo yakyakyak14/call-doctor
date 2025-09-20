@@ -15,7 +15,7 @@ import AuthModal from "@/components/AuthModal";
 import { MapPin, Stethoscope, Star, Phone, Calendar, MessageSquare, Lock } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Doctor {
@@ -92,6 +92,9 @@ const DoctorProfile = () => {
   const [bookingNote, setBookingNote] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [pendingConsultationId, setPendingConsultationId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null));
@@ -221,8 +224,8 @@ const DoctorProfile = () => {
                       <Button variant="outline"><Phone className="h-4 w-4 mr-2" /> Call</Button>
                     </a>
                   ) : (
-                    <Button variant="outline" disabled className="cursor-not-allowed">
-                      <Lock className="h-4 w-4 mr-2" /> Unlock contact
+                    <Button variant="outline" onClick={() => setBookingOpen(true)}>
+                      <Lock className="h-4 w-4 mr-2" /> Book & pay to unlock
                     </Button>
                   )}
                   <Button variant="ghost"><MessageSquare className="h-4 w-4 mr-2" /> Message</Button>
@@ -290,17 +293,22 @@ const DoctorProfile = () => {
                     return;
                   }
                   try {
-                    const { error } = await supabase.from("consultations").insert({
-                      consultation_fee: doctor.fee,
-                      consultation_type: bookingMethod,
-                      doctor_id: doctor.id,
-                      scheduled_date: new Date(bookingWhen).toISOString(),
-                      patient_id: user.id,
-                      notes: bookingNote || null,
-                      payment_status: "pending",
-                      status: "requested",
-                    });
+                    const { data: inserted, error } = await supabase
+                      .from("consultations")
+                      .insert({
+                        consultation_fee: doctor.fee,
+                        consultation_type: bookingMethod,
+                        doctor_id: doctor.id,
+                        scheduled_date: new Date(bookingWhen).toISOString(),
+                        patient_id: user.id,
+                        notes: bookingNote || null,
+                        payment_status: "pending",
+                        status: "requested",
+                      })
+                      .select("id")
+                      .single();
                     if (error) throw error;
+                    setPendingConsultationId(inserted.id);
                     toast({
                       title: "Appointment requested",
                       description: `Your request with ${doctor.name} on ${new Date(bookingWhen).toLocaleString()} has been received.`,
@@ -309,6 +317,7 @@ const DoctorProfile = () => {
                     setBookingWhen("");
                     setBookingMethod("in-person");
                     setBookingNote("");
+                    setPaymentOpen(true);
                   } catch (e: any) {
                     toast({ title: "Booking failed", description: e.message || "Please try again later." });
                   }
@@ -322,6 +331,47 @@ const DoctorProfile = () => {
         </Dialog>
 
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
+
+        {/* Payment Dialog (simulation) */}
+        <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Complete Payment</DialogTitle>
+              <DialogDescription>
+                This is a demo payment step. Click "Mark as paid" to unlock the doctor's contact.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>After payment is confirmed, the doctor's contact will be unlocked on this page.</p>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={async () => {
+                  if (!pendingConsultationId) {
+                    setPaymentOpen(false);
+                    return;
+                  }
+                  try {
+                    const { error } = await supabase
+                      .from("consultations")
+                      .update({ payment_status: "paid" })
+                      .eq("id", pendingConsultationId);
+                    if (error) throw error;
+                    toast({ title: "Payment confirmed", description: "Contact unlocked for this doctor." });
+                    setPaymentOpen(false);
+                    setPendingConsultationId(null);
+                    await queryClient.invalidateQueries({ queryKey: ["contactAccess", doctor?.id, userId] });
+                  } catch (e: any) {
+                    toast({ title: "Payment update failed", description: e.message || "Please try again." });
+                  }
+                }}
+                className="bg-primary"
+              >
+                Mark as paid
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
       <Footer />
     </div>

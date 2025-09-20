@@ -6,21 +6,63 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { MapPin, Ambulance as AmbulanceIcon, PhoneCall, Hospital, Clock, Shield, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { startVapiCall } from "@/integrations/vapi";
 
 const Ambulance = () => {
   const { toast } = useToast();
+  const location = useLocation();
   const [vapiOpen, setVapiOpen] = useState(false);
   const [vapiNumber, setVapiNumber] = useState("+234");
   const [vapiLoading, setVapiLoading] = useState(false);
+  const [includeLocation, setIncludeLocation] = useState(true);
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [recentCalls, setRecentCalls] = useState<Array<{ id: string | null; to: string; at: string }>>([]);
+
+  // Try to get user location for emergency metadata
+  useEffect(() => {
+    if (!includeLocation) return;
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        },
+        () => {
+          setCoords(null);
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+  }, [includeLocation]);
+
+  // Auto-open AI Call dialog if ?call=1 is present
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("call") === "1") {
+      setVapiOpen(true);
+    }
+  }, [location.search]);
+
+  // Load recent calls from localStorage
+  const refreshRecent = () => {
+    try {
+      const raw = localStorage.getItem("vapi_call_history");
+      const arr = raw ? (JSON.parse(raw) as any[]) : [];
+      setRecentCalls(arr);
+    } catch {}
+  };
+  useEffect(() => {
+    refreshRecent();
+  }, []);
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -177,6 +219,19 @@ const Ambulance = () => {
               <Label htmlFor="vapi-number">Phone number</Label>
               <Input id="vapi-number" value={vapiNumber} onChange={(e) => setVapiNumber(e.target.value)} placeholder="+2348012345678" />
             </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="include-location" checked={includeLocation} onCheckedChange={(v) => setIncludeLocation(Boolean(v))} />
+              <Label htmlFor="include-location">Include my location (recommended)</Label>
+            </div>
+            {includeLocation && (
+              <p className="text-xs text-muted-foreground">
+                {coords ? (
+                  <>Location ready: {coords.lat.toFixed(4)}, {coords.lon.toFixed(4)}</>
+                ) : (
+                  <>Fetching location… if it fails, the call will proceed without it.</>
+                )}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -188,10 +243,15 @@ const Ambulance = () => {
                 }
                 try {
                   setVapiLoading(true);
-                  const res = await startVapiCall({ customerNumber: vapiNumber, metadata: { source: "AmbulancePage" } });
+                  const res = await startVapiCall({
+                    customerNumber: vapiNumber,
+                    metadata: { source: "AmbulancePage", coords },
+                    assistantOverrides: { emergency: true },
+                  });
                   const callId = (res as any)?.data?.id;
                   toast({ title: "Call started", description: callId ? `Call ID: ${callId}` : "The AI assistant is placing your call." });
                   setVapiOpen(false);
+                  refreshRecent();
                 } catch (e: any) {
                   toast({ title: "Failed to start call", description: e.message || "Please try again." });
                 } finally {
@@ -204,6 +264,44 @@ const Ambulance = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Separator className="my-8" />
+      {/* Recent Calls */}
+      <section className="container mx-auto px-4 mb-10">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Emergency Calls</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentCalls.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No recent calls yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {recentCalls.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <div>
+                      <div className="text-foreground">{c.to}</div>
+                      <div className="text-muted-foreground text-xs">{new Date(c.at).toLocaleString()}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{c.id ? `ID: ${c.id}` : ""}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" onClick={refreshRecent}>Refresh</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  localStorage.setItem("vapi_call_history", JSON.stringify([]));
+                  refreshRecent();
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
       <Footer />
     </div>
   );

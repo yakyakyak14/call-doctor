@@ -15,5 +15,21 @@ export async function startVapiCall(params: StartVapiCallParams) {
   if (error) {
     throw new Error(error.message || "Failed to start Vapi call");
   }
-  return data;
+  try {
+    const entry = {
+      id: (data as any)?.id ?? null,
+      to: params.customerNumber,
+      metadata: params.metadata ?? null,
+      at: new Date().toISOString(),
+    };
+    const key = "vapi_call_history";
+    const raw = localStorage.getItem(key);
+    const arr = raw ? (JSON.parse(raw) as any[]) : [];
+    arr.unshift(entry);
+    localStorage.setItem(key, JSON.stringify(arr.slice(0, 10)));
+  } catch {
+    // ignore localStorage errors (e.g., SSR/permissions)
+  }
+  // Return shape compatible with callers expecting `{ data }`
+  return { data };
 }

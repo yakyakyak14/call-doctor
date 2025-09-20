@@ -60,6 +60,11 @@ const Header = () => {
 
           {/* Actions */}
           <div className="flex items-center space-x-4">
+            <Link to="/ambulance?call=1" className="hidden md:block">
+              <Button className="bg-emergency hover:bg-emergency/90 text-white">
+                Emergency
+              </Button>
+            </Link>
             <Button variant="ghost" size="icon" className="hidden md:flex">
               <Search className="h-5 w-5" />
             </Button>
@@ -112,6 +117,11 @@ const Header = () => {
                 </DrawerHeader>
                 <div className="p-4 space-y-4">
                   <nav className="grid gap-3">
+                    <DrawerClose asChild>
+                      <Link to="/ambulance?call=1" className="text-white bg-emergency hover:bg-emergency/90 px-3 py-2 rounded-md text-center">
+                        Emergency
+                      </Link>
+                    </DrawerClose>
                     <DrawerClose asChild>
                       <Link to="/search" className="text-foreground hover:text-primary transition-colors">Find Doctors</Link>
                     </DrawerClose>
