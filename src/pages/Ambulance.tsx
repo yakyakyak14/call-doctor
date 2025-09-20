@@ -13,8 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { MapPin, Ambulance as AmbulanceIcon, PhoneCall, Hospital, Clock, Shield, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { startVapiCall } from "@/integrations/vapi";
 
 const Ambulance = () => {
+  const { toast } = useToast();
+  const [vapiOpen, setVapiOpen] = useState(false);
+  const [vapiNumber, setVapiNumber] = useState("+234");
+  const [vapiLoading, setVapiLoading] = useState(false);
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -41,6 +47,9 @@ const Ambulance = () => {
                 WhatsApp Support
               </Button>
             </a>
+            <Button size="lg" variant="secondary" onClick={() => setVapiOpen(true)}>
+              AI Call
+            </Button>
           </div>
         </div>
 
@@ -159,6 +168,47 @@ const Ambulance = () => {
         {/* Feature section from component */}
         <AmbulanceService />
       </main>
+      {/* Vapi AI Call Dialog */}
+      <Dialog open={vapiOpen} onOpenChange={setVapiOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Start AI Call</DialogTitle>
+            <DialogDescription>
+              Enter the recipient's phone number in E.164 format (e.g., +2348012345678).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="vapi-number">Phone number</Label>
+              <Input id="vapi-number" value={vapiNumber} onChange={(e) => setVapiNumber(e.target.value)} placeholder="+2348012345678" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={vapiLoading}
+              onClick={async () => {
+                if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
+                  toast({ title: "Invalid number", description: "Provide an E.164 number, e.g., +234..." });
+                  return;
+                }
+                try {
+                  setVapiLoading(true);
+                  const res = await startVapiCall({ customerNumber: vapiNumber, metadata: { source: "AmbulancePage" } });
+                  const callId = (res as any)?.data?.id;
+                  toast({ title: "Call started", description: callId ? `Call ID: ${callId}` : "The AI assistant is placing your call." });
+                  setVapiOpen(false);
+                } catch (e: any) {
+                  toast({ title: "Failed to start call", description: e.message || "Please try again." });
+                } finally {
+                  setVapiLoading(false);
+                }
+              }}
+            >
+              {vapiLoading ? "Starting..." : "Start AI Call"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Footer />
     </div>
   );
