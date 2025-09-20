@@ -12,12 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import AuthModal from "@/components/AuthModal";
-import { MapPin, Stethoscope, Star, Phone, Calendar, MessageSquare } from "lucide-react";
+import { MapPin, Stethoscope, Star, Phone, Calendar, MessageSquare, Lock } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { startVapiCall } from "@/integrations/vapi";
 
 interface Doctor {
   id: string;
@@ -92,9 +91,33 @@ const DoctorProfile = () => {
   const [bookingMethod, setBookingMethod] = useState("in-person");
   const [bookingNote, setBookingNote] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
-  const [vapiOpen, setVapiOpen] = useState(false);
-  const [vapiNumber, setVapiNumber] = useState("+234");
-  const [vapiLoading, setVapiLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const { data: access } = useQuery({
+    queryKey: ["contactAccess", doctor?.id, userId],
+    enabled: !!doctor?.id && !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("consultations")
+        .select("id,payment_status")
+        .eq("patient_id", userId!)
+        .eq("doctor_id", doctor!.id)
+        .in("payment_status", ["paid", "succeeded", "completed"]) // allow any 'paid-like' status
+        .limit(1);
+      if (error) throw error;
+      return { canAccess: (data ?? []).length > 0 };
+    },
+    staleTime: 60_000,
+  });
+  const canSeeContact = access?.canAccess ?? false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -161,7 +184,14 @@ const DoctorProfile = () => {
                       ))}
                       <span className="text-xs text-muted-foreground ml-1">{doctor.rating.toFixed(1)} / 5</span>
                     </div>
-                    <div className="text-sm text-muted-foreground">{doctor.hospital}</div>
+                    <div className={`text-sm text-muted-foreground ${!canSeeContact ? "blur-sm select-none" : ""}`}>
+                      {doctor.hospital || "Hospital / Clinic"}
+                    </div>
+                    {!canSeeContact && (
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Lock className="h-3 w-3" /> Book and pay to unlock contact
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -186,11 +216,16 @@ const DoctorProfile = () => {
                   <Button onClick={() => setBookingOpen(true)} className="bg-primary">
                     <Calendar className="h-4 w-4 mr-2" /> Book Appointment
                   </Button>
-                  <a href={`tel:+234800CALLDOC`}>
-                    <Button variant="outline"><Phone className="h-4 w-4 mr-2" /> Call</Button>
-                  </a>
+                  {canSeeContact ? (
+                    <a href={`tel:+234800CALLDOC`}>
+                      <Button variant="outline"><Phone className="h-4 w-4 mr-2" /> Call</Button>
+                    </a>
+                  ) : (
+                    <Button variant="outline" disabled className="cursor-not-allowed">
+                      <Lock className="h-4 w-4 mr-2" /> Unlock contact
+                    </Button>
+                  )}
                   <Button variant="ghost"><MessageSquare className="h-4 w-4 mr-2" /> Message</Button>
-                  <Button variant="secondary" onClick={() => setVapiOpen(true)}>AI Call</Button>
                 </div>
               </CardContent>
             </Card>
@@ -287,47 +322,6 @@ const DoctorProfile = () => {
         </Dialog>
 
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
-
-        {/* Vapi AI Call Dialog */}
-        <Dialog open={vapiOpen} onOpenChange={setVapiOpen}>
-          <DialogContent className="sm:max-w-[480px]">
-            <DialogHeader>
-              <DialogTitle>Start AI Call</DialogTitle>
-              <DialogDescription>
-                Enter the recipient's phone number in E.164 format (e.g., +2348012345678).
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="vapi-number">Phone number</Label>
-                <Input id="vapi-number" value={vapiNumber} onChange={(e) => setVapiNumber(e.target.value)} placeholder="+2348012345678" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                disabled={vapiLoading}
-                onClick={async () => {
-                  if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
-                    toast({ title: "Invalid number", description: "Provide an E.164 number, e.g., +234..." });
-                    return;
-                  }
-                  try {
-                    setVapiLoading(true);
-                    const res = await startVapiCall({ customerNumber: vapiNumber, metadata: { doctorId: doctor?.id } });
-                    toast({ title: "Call started", description: "The AI assistant is placing your call." });
-                    setVapiOpen(false);
-                  } catch (e: any) {
-                    toast({ title: "Failed to start call", description: e.message || "Please try again." });
-                  } finally {
-                    setVapiLoading(false);
-                  }
-                }}
-              >
-                {vapiLoading ? "Starting..." : "Start AI Call"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </main>
       <Footer />
     </div>

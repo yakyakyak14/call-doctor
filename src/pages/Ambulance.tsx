@@ -37,19 +37,14 @@ const Ambulance = () => {
             Rapid, reliable, and well-equipped ambulances with trained professionals. Your safety is our top priority.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <a href="tel:+234800EMERGENCY">
-              <Button size="lg" className="bg-emergency hover:bg-emergency/90">
-                <PhoneCall className="h-5 w-5 mr-2" /> Call Emergency
-              </Button>
-            </a>
+            <Button size="lg" className="bg-emergency hover:bg-emergency/90" onClick={() => setVapiOpen(true)}>
+              <PhoneCall className="h-5 w-5 mr-2" /> Call Emergency
+            </Button>
             <a href="https://wa.me/2348000000000" target="_blank" rel="noreferrer">
               <Button size="lg" variant="outline" className="border-emergency text-emergency hover:bg-emergency hover:text-white">
                 WhatsApp Support
               </Button>
             </a>
-            <Button size="lg" variant="secondary" onClick={() => setVapiOpen(true)}>
-              AI Call
-            </Button>
           </div>
         </div>
 
