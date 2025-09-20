@@ -17,17 +17,22 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/ambulance" element={<Ambulance />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/doctor/:id" element={<DoctorProfile />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      {(() => {
+        const base = (import.meta.env.BASE_URL || "/").replace(/\/+$/, "");
+        return (
+          <BrowserRouter basename={base}>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/search" element={<Search />} />
+              <Route path="/ambulance" element={<Ambulance />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/doctor/:id" element={<DoctorProfile />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        );
+      })()}
     </TooltipProvider>
   </QueryClientProvider>
 );
