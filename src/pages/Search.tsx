@@ -17,6 +17,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import AuthModal from "@/components/AuthModal";
+import { Link } from "react-router-dom";
 
 import docFemale1 from "@/assets/doctor-female-nigerian.jpg";
 import docMale1 from "@/assets/doctor-male-nigerian.jpg";
@@ -141,6 +143,7 @@ const Search = () => {
   const [bookingMethod, setBookingMethod] = useState("in-person");
   const [bookingNote, setBookingNote] = useState("");
   const { toast } = useToast();
+  const [authOpen, setAuthOpen] = useState(false);
 
   // Load doctors from Supabase (optional). Fallback to local mock data.
   const { data: doctorRows, isLoading, isError, refetch } = useQuery({
@@ -453,7 +456,7 @@ const Search = () => {
                   <SheetTitle>{openProfile.name}</SheetTitle>
                   <SheetDescription>{openProfile.specialty} • {openProfile.hospital}</SheetDescription>
                 </SheetHeader>
-                <div className="mt-4 space-y-4">
+                <div className="space-y-4">
                   <div className="flex gap-4">
                     <img src={openProfile.image} alt={openProfile.name} className="w-28 h-28 rounded-lg object-cover" />
                     <div className="flex-1">
@@ -489,6 +492,9 @@ const Search = () => {
                     <a href={`tel:+234800CALLDOC`}>
                       <Button variant="outline">Call now</Button>
                     </a>
+                    <Link to={`/doctor/${openProfile.id}`} state={{ doctor: openProfile }}>
+                      <Button variant="ghost">Full profile</Button>
+                    </Link>
                   </div>
                 </div>
               </>
@@ -534,19 +540,44 @@ const Search = () => {
             </div>
             <DialogFooter>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   if (!bookingDoctor || !bookingWhen) {
                     toast({ title: "Missing details", description: "Please select a date/time to continue." });
                     return;
                   }
-                  toast({
-                    title: "Appointment requested",
-                    description: `Your request with ${bookingDoctor.name} on ${new Date(bookingWhen).toLocaleString()} has been received.`,
-                  });
-                  setBookingOpen(false);
-                  setBookingWhen("");
-                  setBookingMethod("in-person");
-                  setBookingNote("");
+                  const { data: userData } = await supabase.auth.getUser();
+                  const user = userData?.user;
+                  if (!user) {
+                    setAuthOpen(true);
+                    toast({ title: "Please sign in", description: "Sign in to complete your booking." });
+                    return;
+                  }
+                  try {
+                    const isReal = !!doctorRows?.find((r: any) => r.id === bookingDoctor.id);
+                    if (isReal) {
+                      const { error } = await supabase.from("consultations").insert({
+                        consultation_fee: bookingDoctor.fee,
+                        consultation_type: bookingMethod,
+                        doctor_id: bookingDoctor.id,
+                        scheduled_date: new Date(bookingWhen).toISOString(),
+                        patient_id: user.id,
+                        notes: bookingNote || null,
+                        payment_status: "pending",
+                        status: "requested",
+                      });
+                      if (error) throw error;
+                    }
+                    toast({
+                      title: "Appointment requested",
+                      description: `Your request with ${bookingDoctor.name} on ${new Date(bookingWhen).toLocaleString()} has been received.`,
+                    });
+                    setBookingOpen(false);
+                    setBookingWhen("");
+                    setBookingMethod("in-person");
+                    setBookingNote("");
+                  } catch (e: any) {
+                    toast({ title: "Booking failed", description: e.message || "Please try again later." });
+                  }
                 }}
                 className="bg-primary"
               >
@@ -555,6 +586,8 @@ const Search = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
       </main>
       <Footer />
     </div>

@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { MapPin, Ambulance as AmbulanceIcon, PhoneCall, Hospital, Clock, Shield, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/components/ui/use-toast";
 
 const Ambulance = () => {
   return (
@@ -139,13 +141,7 @@ const Ambulance = () => {
             <TabsTrigger value="info">Emergency Info</TabsTrigger>
           </TabsList>
           <TabsContent value="map">
-            <Card>
-              <CardContent className="p-6">
-                <div className="h-72 w-full rounded-md bg-muted flex items-center justify-center text-muted-foreground">
-                  <MapPin className="h-5 w-5 mr-2" /> Map placeholder (nearest ambulances and hospitals)
-                </div>
-              </CardContent>
-            </Card>
+            <NearestMap />
           </TabsContent>
           <TabsContent value="info">
             <Card>
@@ -169,3 +165,61 @@ const Ambulance = () => {
 };
 
 export default Ambulance;
+
+// Inline component for map (OpenStreetMap embed + Geolocation)
+const NearestMap = () => {
+  const defaultCenter = { lat: 6.524379, lon: 3.379206 }; // Lagos
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!("geolocation" in navigator)) {
+      toast({ title: "Geolocation not supported", description: "We will show Lagos by default." });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => toast({ title: "Location blocked", description: "Showing a default area. You can allow location to refine." })
+    );
+  }, [toast]);
+
+  const { lat, lon } = coords ?? defaultCenter;
+  const bbox = useMemo(() => {
+    const d = 0.03; // ~3km box
+    const minLon = lon - d;
+    const minLat = lat - d;
+    const maxLon = lon + d;
+    const maxLat = lat + d;
+    return `${encodeURIComponent(minLon)},${encodeURIComponent(minLat)},${encodeURIComponent(maxLon)},${encodeURIComponent(maxLat)}`;
+  }, [lat, lon]);
+
+  const embedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lon}`;
+  const openUrl = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=14/${lat}/${lon}`;
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="relative">
+          <iframe
+            title="Nearest Ambulances"
+            src={embedUrl}
+            className="w-full h-80 rounded-md"
+          />
+          <div className="absolute left-2 bottom-2 flex gap-2">
+            {!coords && (
+              <Button size="sm" variant="outline" onClick={() => navigator.geolocation.getCurrentPosition(
+                (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                () => toast({ title: "Location blocked", description: "Please allow location to center the map." })
+              )}>
+                <MapPin className="h-4 w-4 mr-1" /> Use my location
+              </Button>
+            )}
+            <a href={openUrl} target="_blank" rel="noreferrer">
+              <Button size="sm" className="bg-primary">Open in OSM</Button>
+            </a>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
