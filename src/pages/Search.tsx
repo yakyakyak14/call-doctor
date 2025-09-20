@@ -14,6 +14,9 @@ import { MapPin, Stethoscope, Star, Filter } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 import docFemale1 from "@/assets/doctor-female-nigerian.jpg";
 import docMale1 from "@/assets/doctor-male-nigerian.jpg";
@@ -139,8 +142,52 @@ const Search = () => {
   const [bookingNote, setBookingNote] = useState("");
   const { toast } = useToast();
 
+  // Load doctors from Supabase (optional). Fallback to local mock data.
+  const { data: doctorRows, isLoading, isError, refetch } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("doctor_profiles")
+        .select(
+          `id, consultation_fee, is_available, phone_consultation, years_of_experience, hospital_clinic_name, languages, address,
+           profiles:profiles(first_name,last_name,profile_picture_url),
+           medical_specialties:medical_specialties(name),
+           locations:locations(city)`
+        )
+        .limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const sourceDoctors: Doctor[] = useMemo(() => {
+    if (!doctorRows || doctorRows.length === 0) return DOCTORS;
+    return doctorRows.map((row: any) => {
+      const first = row.profiles?.first_name ?? "Doctor";
+      const last = row.profiles?.last_name ?? "";
+      const img = row.profiles?.profile_picture_url ?? docFemale1;
+      const specialty = row.medical_specialties?.name ?? "General Medicine";
+      const city = row.locations?.city ?? "Lagos";
+      return {
+        id: row.id,
+        name: `${first} ${last}`.trim(),
+        specialty,
+        location: city,
+        rating: 4.6, // Placeholder; consider computing from reviews
+        years: row.years_of_experience ?? 5,
+        fee: row.consultation_fee ?? 10000,
+        available: Boolean(row.is_available),
+        telemedicine: Boolean(row.phone_consultation),
+        languages: Array.isArray(row.languages) ? row.languages : ["English"],
+        image: img,
+        hospital: row.hospital_clinic_name ?? "",
+      } as Doctor;
+    });
+  }, [doctorRows]);
+
   const filtered = useMemo(() => {
-    let list = [...DOCTORS];
+    let list = [...sourceDoctors];
 
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -176,7 +223,7 @@ const Search = () => {
     }
 
     return list;
-  }, [query, specialty, location, minRating, onlyAvailable, telemedicine, sort]);
+  }, [query, specialty, location, minRating, onlyAvailable, telemedicine, sort, sourceDoctors]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -300,8 +347,38 @@ const Search = () => {
           </Button>
         </div>
 
-        {/* Results grid */}
-        {filtered.length === 0 ? (
+        {/* Loading / Error / Results */}
+        {isLoading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="flex gap-4">
+                    <Skeleton className="w-24 h-24 rounded-lg" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-3 w-1/3" />
+                      <Skeleton className="h-3 w-2/3" />
+                      <Skeleton className="h-8 w-full" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : isError ? (
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground">Unable to load doctors</h3>
+                  <p className="text-sm text-muted-foreground">Showing sample results. You can retry loading real data.</p>
+                </div>
+                <Button variant="outline" onClick={() => refetch()}>Retry</Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : filtered.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground">
               No doctors match your filters. Try broadening your search.
