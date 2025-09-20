@@ -6,11 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { MapPin, Stethoscope, Star, Filter } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
 
 import docFemale1 from "@/assets/doctor-female-nigerian.jpg";
 import docMale1 from "@/assets/doctor-male-nigerian.jpg";
@@ -129,6 +132,12 @@ const Search = () => {
   const [telemedicine, setTelemedicine] = useState(false);
   const [sort, setSort] = useState("best");
   const [openProfile, setOpenProfile] = useState<Doctor | null>(null);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingDoctor, setBookingDoctor] = useState<Doctor | null>(null);
+  const [bookingWhen, setBookingWhen] = useState("");
+  const [bookingMethod, setBookingMethod] = useState("in-person");
+  const [bookingNote, setBookingNote] = useState("");
+  const { toast } = useToast();
 
   const filtered = useMemo(() => {
     let list = [...DOCTORS];
@@ -391,7 +400,15 @@ const Search = () => {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <Button className="bg-primary">Book Appointment</Button>
+                    <Button
+                      className="bg-primary"
+                      onClick={() => {
+                        setBookingDoctor(openProfile);
+                        setBookingOpen(true);
+                      }}
+                    >
+                      Book Appointment
+                    </Button>
                     <a href={`tel:+234800CALLDOC`}>
                       <Button variant="outline">Call now</Button>
                     </a>
@@ -401,6 +418,66 @@ const Search = () => {
             )}
           </SheetContent>
         </Sheet>
+
+        {/* Booking Dialog */}
+        <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Book Appointment</DialogTitle>
+              <DialogDescription>
+                {bookingDoctor ? `With ${bookingDoctor.name} • ${bookingDoctor.specialty}` : "Select a doctor to proceed"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="when">Date & time</Label>
+                <Input
+                  id="when"
+                  type="datetime-local"
+                  value={bookingWhen}
+                  onChange={(e) => setBookingWhen(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Consultation method</Label>
+                <Select value={bookingMethod} onValueChange={setBookingMethod}>
+                  <SelectTrigger aria-label="Consultation method">
+                    <SelectValue placeholder="Choose method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in-person">In-person</SelectItem>
+                    <SelectItem value="telemedicine">Telemedicine</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="note">Notes (optional)</Label>
+                <Textarea id="note" placeholder="Symptoms, preferences, or additional info" value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  if (!bookingDoctor || !bookingWhen) {
+                    toast({ title: "Missing details", description: "Please select a date/time to continue." });
+                    return;
+                  }
+                  toast({
+                    title: "Appointment requested",
+                    description: `Your request with ${bookingDoctor.name} on ${new Date(bookingWhen).toLocaleString()} has been received.`,
+                  });
+                  setBookingOpen(false);
+                  setBookingWhen("");
+                  setBookingMethod("in-person");
+                  setBookingNote("");
+                }}
+                className="bg-primary"
+              >
+                Confirm booking
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
       <Footer />
     </div>

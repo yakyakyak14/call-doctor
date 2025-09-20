@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import AuthModal from "./AuthModal";
 import type { User } from "@supabase/supabase-js";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose, DrawerTrigger } from "@/components/ui/drawer";
+import { Separator } from "@/components/ui/separator";
 
 const Header = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -97,9 +99,64 @@ const Header = () => {
               </>
             )}
             
-            <Button variant="ghost" size="icon" className="md:hidden">
-              <Menu className="h-5 w-5" />
-            </Button>
+            {/* Mobile menu drawer */}
+            <Drawer>
+              <DrawerTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Menu</DrawerTitle>
+                </DrawerHeader>
+                <div className="p-4 space-y-4">
+                  <nav className="grid gap-3">
+                    <DrawerClose asChild>
+                      <Link to="/search" className="text-foreground hover:text-primary transition-colors">Find Doctors</Link>
+                    </DrawerClose>
+                    <DrawerClose asChild>
+                      <Link to="/ambulance" className="text-foreground hover:text-primary transition-colors">Ambulance Service</Link>
+                    </DrawerClose>
+                    <DrawerClose asChild>
+                      <Link to="/about" className="text-foreground hover:text-primary transition-colors">About</Link>
+                    </DrawerClose>
+                  </nav>
+                  <Separator />
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {user ? (
+                      <Button 
+                        variant="outline" 
+                        onClick={handleSignOut}
+                        className="gap-2"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Sign Out
+                      </Button>
+                    ) : (
+                      <>
+                        <DrawerClose asChild>
+                          <Button 
+                            variant="outline"
+                            onClick={() => setIsAuthModalOpen(true)}
+                          >
+                            Sign In
+                          </Button>
+                        </DrawerClose>
+                        <DrawerClose asChild>
+                          <Button 
+                            className="bg-primary hover:bg-primary-dark"
+                            onClick={() => setIsAuthModalOpen(true)}
+                          >
+                            Join Now
+                          </Button>
+                        </DrawerClose>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
           </div>
         </div>
       </div>
