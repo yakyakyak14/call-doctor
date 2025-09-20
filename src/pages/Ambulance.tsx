@@ -62,6 +62,10 @@ const Ambulance = () => {
   };
   useEffect(() => {
     refreshRecent();
+    try {
+      const last = localStorage.getItem("vapi_last_number");
+      if (last) setVapiNumber(last);
+    } catch {}
   }, []);
   return (
     <div className="min-h-screen bg-background">
@@ -251,6 +255,7 @@ const Ambulance = () => {
                   const callId = (res as any)?.data?.id;
                   toast({ title: "Call started", description: callId ? `Call ID: ${callId}` : "The AI assistant is placing your call." });
                   setVapiOpen(false);
+                  try { localStorage.setItem("vapi_last_number", vapiNumber); } catch {}
                   refreshRecent();
                 } catch (e: any) {
                   toast({ title: "Failed to start call", description: e.message || "Please try again." });
@@ -264,6 +269,11 @@ const Ambulance = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <div className="container mx-auto px-4 mb-6">
+        <p className="text-xs text-muted-foreground">
+          Prefer phone? <a href="tel:+234800EMERGENCY" className="underline">Dial +234800EMERGENCY</a>
+        </p>
+      </div>
       <Separator className="my-8" />
       {/* Recent Calls */}
       <section className="container mx-auto px-4 mb-10">
