@@ -169,6 +169,86 @@ const AdminEmergency = () => {
     );
   };
 
+  const applyQuickRange = (range: "today" | "7d" | "30d") => {
+    const now = new Date();
+    const to = now.toISOString().slice(0, 10);
+    let from: string;
+    if (range === "today") {
+      from = to;
+    } else if (range === "7d") {
+      const d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      from = d.toISOString().slice(0, 10);
+    } else {
+      const d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      from = d.toISOString().slice(0, 10);
+    }
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const exportCsv = async () => {
+    if (!authorized) return;
+    try {
+      let query = supabase
+        .from("emergency_calls")
+        .select("id,to_number,call_id,source,coords,ip,user_id,user_agent,created_at")
+        .order("created_at", { ascending: false });
+
+      if (searchNumber.trim()) query = query.ilike("to_number", `%${searchNumber.trim()}%`);
+      if (source.trim()) query = query.ilike("source", `%${source.trim()}%`);
+      if (fromDate) query = query.gte("created_at", new Date(fromDate).toISOString());
+      if (toDate) query = query.lte("created_at", new Date(toDate).toISOString());
+
+      const { data, error } = await query.limit(5000);
+      if (error) throw error;
+      const rows = (data as EmergencyCall[]) || [];
+      const header = [
+        "id",
+        "created_at",
+        "to_number",
+        "source",
+        "call_id",
+        "coords",
+        "ip",
+        "user_id",
+        "user_agent",
+      ];
+      const escape = (val: any) => {
+        if (val === null || val === undefined) return "";
+        const s = typeof val === "string" ? val : JSON.stringify(val);
+        // Escape quotes and wrap in quotes
+        return `"${s.replace(/"/g, '""')}"`;
+      };
+      const lines = [header.join(",")];
+      for (const r of rows) {
+        lines.push([
+          r.id,
+          r.created_at,
+          r.to_number,
+          r.source ?? "",
+          r.call_id ?? "",
+          r.coords ? JSON.stringify(r.coords) : "",
+          r.ip ?? "",
+          r.user_id ?? "",
+          r.user_agent ?? "",
+        ].map(escape).join(","));
+      }
+      const csv = lines.join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.download = `emergency-calls-${ts}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "CSV export failed", description: e.message || "Try again." });
+    }
+  };
+
   const BarList: React.FC<{ items: { name: string; value: number }[] }> = ({ items }) => {
     if (!items || items.length === 0) return <div className="text-xs text-muted-foreground">No data</div>;
     const max = Math.max(1, ...items.map((i) => i.value));
@@ -279,9 +359,18 @@ const AdminEmergency = () => {
                     </select>
                   </div>
                 </div>
-                <div className="mt-3 flex gap-2">
-                  <Button variant="outline" onClick={() => { setSearchNumber(""); setSource(""); setFromDate(""); setToDate(""); }}>Reset</Button>
-                  <Button variant="outline" onClick={() => refetch()}>Refresh</Button>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Quick:</span>
+                    <Button variant="outline" size="sm" onClick={() => applyQuickRange("today")}>Today</Button>
+                    <Button variant="outline" size="sm" onClick={() => applyQuickRange("7d")}>7d</Button>
+                    <Button variant="outline" size="sm" onClick={() => applyQuickRange("30d")}>30d</Button>
+                  </div>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <Button variant="outline" onClick={() => { setSearchNumber(""); setSource(""); setFromDate(""); setToDate(""); }}>Reset</Button>
+                    <Button variant="outline" onClick={() => refetch()}>Refresh</Button>
+                    <Button onClick={exportCsv}>Export CSV</Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

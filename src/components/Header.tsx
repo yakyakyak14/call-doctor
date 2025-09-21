@@ -11,16 +11,22 @@ import { Separator } from "@/components/ui/separator";
 const Header = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     // Get current user
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      const allowed = (import.meta.env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+      setIsAdmin(Boolean(user?.email) && (allowed.length === 0 ? false : allowed.includes((user?.email || "").toLowerCase())));
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      const u = session?.user;
+      const allowed = (import.meta.env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+      setIsAdmin(Boolean(u?.email) && (allowed.length === 0 ? false : allowed.includes((u?.email || "").toLowerCase())));
     });
 
     return () => subscription.unsubscribe();
@@ -56,6 +62,11 @@ const Header = () => {
             <Link to="/about" className="text-foreground hover:text-primary transition-colors">
               About
             </Link>
+            {isAdmin && (
+              <Link to="/admin/emergency" className="text-foreground hover:text-primary transition-colors">
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Actions */}
@@ -131,6 +142,11 @@ const Header = () => {
                     <DrawerClose asChild>
                       <Link to="/about" className="text-foreground hover:text-primary transition-colors">About</Link>
                     </DrawerClose>
+                    {isAdmin && (
+                      <DrawerClose asChild>
+                        <Link to="/admin/emergency" className="text-foreground hover:text-primary transition-colors">Admin</Link>
+                      </DrawerClose>
+                    )}
                   </nav>
                   <Separator />
                   <div className="grid sm:grid-cols-2 gap-2">
