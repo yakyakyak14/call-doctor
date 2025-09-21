@@ -1,4 +1,5 @@
 -- Create emergency_calls table for server-side logging
+create extension if not exists pgcrypto;
 create table if not exists public.emergency_calls (
   id uuid primary key default gen_random_uuid(),
   to_number text not null,

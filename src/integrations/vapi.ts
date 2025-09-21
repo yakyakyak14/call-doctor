@@ -30,6 +30,6 @@ export async function startVapiCall(params: StartVapiCallParams) {
   } catch {
     // ignore localStorage errors (e.g., SSR/permissions)
   }
-  // Return shape compatible with callers expecting `{ data }`
-  return { data };
+  // Return original data so callers can access `res.data.id`
+  return data;
 }
