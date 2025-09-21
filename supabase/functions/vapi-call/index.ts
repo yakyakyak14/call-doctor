@@ -45,9 +45,11 @@ serve(async (req: Request) => {
     const authHeader = req.headers.get("authorization") || req.headers.get("Authorization") || "";
 
     // Supabase clients (service-role for rate limiting/logging when available)
+    // Supabase URL and ANON KEY are automatically injected in Edge Functions; no need to set as secrets
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    // Use a non-reserved secret name for service role key (e.g., SERVICE_ROLE_KEY)
+    const SERVICE_ROLE = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE");
     const supaSr = createClient(SUPABASE_URL, SERVICE_ROLE || ANON_KEY, {
       auth: { persistSession: false },
       global: { headers: { Authorization: authHeader } },

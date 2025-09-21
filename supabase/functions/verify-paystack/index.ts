@@ -60,8 +60,14 @@ serve(async (req: Request) => {
     }
 
     // Update consultations row
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!; // auto-injected in Edge Functions
+    const SERVICE_ROLE = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE");
+    if (!SERVICE_ROLE) {
+      return new Response(JSON.stringify({ error: "Missing SERVICE_ROLE_KEY secret (set in Function Secrets)" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
     const supa = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
     const { error } = await supa
