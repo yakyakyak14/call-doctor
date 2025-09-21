@@ -152,7 +152,7 @@ const AdminEmergency = () => {
 
   const maxDay = Math.max(1, ...(stats?.days || []).map((d) => d.count));
 
-  const Sparkline: React.FC<{ data: { date: string; count: number }[]; width?: number; height?: number }> = ({ data, width = 560, height = 80 }) => {
+  const Sparkline = ({ data, width = 560, height = 80 }: { data: { date: string; count: number }[]; width?: number; height?: number }) => {
     if (!data || data.length === 0) return <div className="text-xs text-muted-foreground">No data</div>;
     const max = Math.max(1, ...data.map((d) => d.count));
     const stepX = width / Math.max(1, data.length - 1);
@@ -249,7 +249,93 @@ const AdminEmergency = () => {
     }
   };
 
-  const BarList: React.FC<{ items: { name: string; value: number }[] }> = ({ items }) => {
+  const copyCsv = async () => {
+    if (!authorized) return;
+    try {
+      let query = supabase
+        .from("emergency_calls")
+        .select("id,to_number,call_id,source,coords,ip,user_id,user_agent,created_at")
+        .order("created_at", { ascending: false });
+
+      if (searchNumber.trim()) query = query.ilike("to_number", `%${searchNumber.trim()}%`);
+      if (source.trim()) query = query.ilike("source", `%${source.trim()}%`);
+      if (fromDate) query = query.gte("created_at", new Date(fromDate).toISOString());
+      if (toDate) query = query.lte("created_at", new Date(toDate).toISOString());
+
+      const { data, error } = await query.limit(5000);
+      if (error) throw error;
+      const rows = (data as EmergencyCall[]) || [];
+      const header = [
+        "id",
+        "created_at",
+        "to_number",
+        "source",
+        "call_id",
+        "coords",
+        "ip",
+        "user_id",
+        "user_agent",
+      ];
+      const escape = (val: any) => {
+        if (val === null || val === undefined) return "";
+        const s = typeof val === "string" ? val : JSON.stringify(val);
+        return `"${s.replace(/"/g, '""')}"`;
+      };
+      const lines = [header.join(",")];
+      for (const r of rows) {
+        lines.push([
+          r.id,
+          r.created_at,
+          r.to_number,
+          r.source ?? "",
+          r.call_id ?? "",
+          r.coords ? JSON.stringify(r.coords) : "",
+          r.ip ?? "",
+          r.user_id ?? "",
+          r.user_agent ?? "",
+        ].map(escape).join(","));
+      }
+      const csv = lines.join("\n");
+      await navigator.clipboard.writeText(csv);
+      toast({ title: "Copied", description: "CSV copied to clipboard" });
+    } catch (e: any) {
+      toast({ title: "Copy failed", description: e.message || "Try again." });
+    }
+  };
+
+  const exportJson = async () => {
+    if (!authorized) return;
+    try {
+      let query = supabase
+        .from("emergency_calls")
+        .select("id,to_number,call_id,source,coords,ip,user_id,user_agent,created_at")
+        .order("created_at", { ascending: false });
+
+      if (searchNumber.trim()) query = query.ilike("to_number", `%${searchNumber.trim()}%`);
+      if (source.trim()) query = query.ilike("source", `%${source.trim()}%`);
+      if (fromDate) query = query.gte("created_at", new Date(fromDate).toISOString());
+      if (toDate) query = query.lte("created_at", new Date(toDate).toISOString());
+
+      const { data, error } = await query.limit(5000);
+      if (error) throw error;
+      const rows = (data as EmergencyCall[]) || [];
+      const json = JSON.stringify(rows, null, 2);
+      const blob = new Blob([json], { type: "application/json;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.download = `emergency-calls-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "JSON export failed", description: e.message || "Try again." });
+    }
+  };
+
+  const BarList = ({ items }: { items: { name: string; value: number }[] }) => {
     if (!items || items.length === 0) return <div className="text-xs text-muted-foreground">No data</div>;
     const max = Math.max(1, ...items.map((i) => i.value));
     return (
@@ -369,6 +455,8 @@ const AdminEmergency = () => {
                   <div className="flex items-center gap-2 ml-auto">
                     <Button variant="outline" onClick={() => { setSearchNumber(""); setSource(""); setFromDate(""); setToDate(""); }}>Reset</Button>
                     <Button variant="outline" onClick={() => refetch()}>Refresh</Button>
+                    <Button variant="outline" onClick={copyCsv}>Copy CSV</Button>
+                    <Button variant="outline" onClick={exportJson}>Export JSON</Button>
                     <Button onClick={exportCsv}>Export CSV</Button>
                   </div>
                 </div>
