@@ -30,22 +30,34 @@ const Ambulance = () => {
   const callStartOnce = useRef(false);
 
   const autoStartCall = async () => {
-    if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
-      setVapiOpen(true);
-      toast({ title: "Enter number", description: "Please enter your phone number to place the call." });
+    const isValid = (n?: string | null) => !!n && n.startsWith("+") && n.length >= 8;
+    let target = vapiNumber;
+    if (!isValid(target)) {
+      try {
+        const last = localStorage.getItem("vapi_last_number");
+        if (isValid(last)) target = last as string;
+      } catch {}
+    }
+    if (!isValid(target)) {
+      const fallback = (import.meta.env.VITE_DEFAULT_CUSTOMER_NUMBER as string) || "";
+      if (isValid(fallback)) target = fallback;
+    }
+    if (!isValid(target)) {
+      toast({ title: "Cannot start call", description: "No valid number configured. Set VITE_DEFAULT_CUSTOMER_NUMBER or enter a number once." });
       return;
     }
     try {
       setVapiLoading(true);
       const res = await startVapiCall({
-        customerNumber: vapiNumber,
+        customerNumber: target,
         metadata: { source: "AmbulancePage", coords },
         assistantOverrides: { emergency: true, label: "Call HOPE" },
       });
       const callId = (res as any)?.data?.id;
       toast({ title: "Call HOPE started", description: callId ? `Call ID: ${callId}` : "Connecting you to our AI agent now." });
       setVapiOpen(false);
-      try { localStorage.setItem("vapi_last_number", vapiNumber); } catch {}
+      try { localStorage.setItem("vapi_last_number", target); } catch {}
+      setVapiNumber(target);
       refreshRecent();
     } catch (e: any) {
       toast({ title: "Failed to start call", description: e.message || "Please try again." });
