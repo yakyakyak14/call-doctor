@@ -17,6 +17,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { payWithPaystack, type PaystackSuccessResponse } from "@/integrations/payments/paystack";
 
 interface Doctor {
   id: string;
@@ -95,6 +96,7 @@ const DoctorProfile = () => {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [pendingConsultationId, setPendingConsultationId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const [payLoading, setPayLoading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null));
@@ -332,42 +334,73 @@ const DoctorProfile = () => {
 
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
 
-        {/* Payment Dialog (simulation) */}
+        {/* Payment Dialog (Paystack) */}
         <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
           <DialogContent className="sm:max-w-[520px]">
             <DialogHeader>
               <DialogTitle>Complete Payment</DialogTitle>
               <DialogDescription>
-                This is a demo payment step. Click "Mark as paid" to unlock the doctor's contact.
+                You will be redirected to Paystack's secure checkout. After a successful payment, contact will be unlocked.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 text-sm text-muted-foreground">
-              <p>After payment is confirmed, the doctor's contact will be unlocked on this page.</p>
+              <p>Amount: ₦{doctor?.fee ? doctor.fee.toLocaleString() : "-"}</p>
+              <p>Provider: Paystack</p>
             </div>
             <DialogFooter>
               <Button
+                disabled={payLoading || !pendingConsultationId}
+                className="bg-primary"
                 onClick={async () => {
-                  if (!pendingConsultationId) {
-                    setPaymentOpen(false);
+                  if (!doctor || !pendingConsultationId) return;
+                  const { data: userData } = await supabase.auth.getUser();
+                  const user = userData?.user;
+                  if (!user?.email) {
+                    setAuthOpen(true);
+                    toast({ title: "Sign in required", description: "Please sign in with an email to proceed to payment." });
+                    return;
+                  }
+                  const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string;
+                  if (!publicKey) {
+                    toast({ title: "Payment unavailable", description: "Paystack public key not configured." });
                     return;
                   }
                   try {
-                    const { error } = await supabase
-                      .from("consultations")
-                      .update({ payment_status: "paid" })
-                      .eq("id", pendingConsultationId);
-                    if (error) throw error;
-                    toast({ title: "Payment confirmed", description: "Contact unlocked for this doctor." });
-                    setPaymentOpen(false);
-                    setPendingConsultationId(null);
-                    await queryClient.invalidateQueries({ queryKey: ["contactAccess", doctor?.id, userId] });
+                    setPayLoading(true);
+                    const reference = `CD-${pendingConsultationId}-${Date.now()}`;
+                    await payWithPaystack({
+                      publicKey,
+                      email: user.email,
+                      amountKobo: Math.round(Number(doctor.fee || 0) * 100),
+                      reference,
+                      metadata: { consultationId: pendingConsultationId, doctorId: doctor.id },
+                      onSuccess: async (resp: PaystackSuccessResponse) => {
+                        try {
+                          const { data, error } = await supabase.functions.invoke("verify-paystack", {
+                            body: { consultationId: pendingConsultationId, reference: resp.reference },
+                          });
+                          if (error) throw new Error(error.message);
+                          if (!(data as any)?.success) throw new Error("Payment verification failed");
+                          toast({ title: "Payment successful", description: "Contact has been unlocked." });
+                          setPaymentOpen(false);
+                          setPendingConsultationId(null);
+                          await queryClient.invalidateQueries({ queryKey: ["contactAccess", doctor.id, userId] });
+                        } catch (e: any) {
+                          toast({ title: "Verification failed", description: e.message || "Please contact support." });
+                        }
+                      },
+                      onClose: () => {
+                        // do nothing on close
+                      },
+                    });
                   } catch (e: any) {
-                    toast({ title: "Payment update failed", description: e.message || "Please try again." });
+                    toast({ title: "Payment failed to start", description: e.message || "Try again later." });
+                  } finally {
+                    setPayLoading(false);
                   }
                 }}
-                className="bg-primary"
               >
-                Mark as paid
+                {payLoading ? "Processing…" : "Pay with Paystack"}
               </Button>
             </DialogFooter>
           </DialogContent>
