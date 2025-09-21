@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { MapPin, Ambulance as AmbulanceIcon, PhoneCall, Hospital, Clock, Shield, Zap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,6 +27,32 @@ const Ambulance = () => {
   const [includeLocation, setIncludeLocation] = useState(true);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [recentCalls, setRecentCalls] = useState<Array<{ id: string | null; to: string; at: string }>>([]);
+  const callStartOnce = useRef(false);
+
+  const autoStartCall = async () => {
+    if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
+      setVapiOpen(true);
+      toast({ title: "Enter number", description: "Please enter your phone number to place the call." });
+      return;
+    }
+    try {
+      setVapiLoading(true);
+      const res = await startVapiCall({
+        customerNumber: vapiNumber,
+        metadata: { source: "AmbulancePage", coords },
+        assistantOverrides: { emergency: true, label: "Call HOPE" },
+      });
+      const callId = (res as any)?.data?.id;
+      toast({ title: "Call HOPE started", description: callId ? `Call ID: ${callId}` : "Connecting you to our AI agent now." });
+      setVapiOpen(false);
+      try { localStorage.setItem("vapi_last_number", vapiNumber); } catch {}
+      refreshRecent();
+    } catch (e: any) {
+      toast({ title: "Failed to start call", description: e.message || "Please try again." });
+    } finally {
+      setVapiLoading(false);
+    }
+  };
 
   // Try to get user location for emergency metadata
   useEffect(() => {
@@ -44,11 +70,12 @@ const Ambulance = () => {
     }
   }, [includeLocation]);
 
-  // Auto-open AI Call dialog if ?call=1 is present
+  // Auto-start AI Call if ?call=1 is present (only once)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (params.get("call") === "1") {
-      setVapiOpen(true);
+    if (params.get("call") === "1" && !callStartOnce.current) {
+      callStartOnce.current = true;
+      autoStartCall();
     }
   }, [location.search]);
 
@@ -82,9 +109,12 @@ const Ambulance = () => {
           <p className="text-muted-foreground max-w-2xl mx-auto">
             Rapid, reliable, and well-equipped ambulances with trained professionals. Your safety is our top priority.
           </p>
+          <p className="text-sm text-foreground mt-2 max-w-2xl mx-auto">
+            <strong>Call HOPE</strong>, for your Emergency Assistance. We’ll connect you with our AI Agent immediately.
+          </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Button size="lg" className="bg-emergency hover:bg-emergency/90" onClick={() => setVapiOpen(true)}>
-              <PhoneCall className="h-5 w-5 mr-2" /> Call Emergency
+            <Button size="lg" className="bg-emergency hover:bg-emergency/90" disabled={vapiLoading} onClick={autoStartCall}>
+              <PhoneCall className="h-5 w-5 mr-2" /> {vapiLoading ? "Calling…" : "Call HOPE"}
             </Button>
             <a href="https://wa.me/2348000000000" target="_blank" rel="noreferrer">
               <Button size="lg" variant="outline" className="border-emergency text-emergency hover:bg-emergency hover:text-white">
@@ -213,9 +243,9 @@ const Ambulance = () => {
       <Dialog open={vapiOpen} onOpenChange={setVapiOpen}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>Start AI Call</DialogTitle>
+            <DialogTitle>Call HOPE</DialogTitle>
             <DialogDescription>
-              Enter the recipient's phone number in E.164 format (e.g., +2348012345678).
+              Call HOPE, for your Emergency Assistance. Enter your phone number in E.164 format (e.g., +2348012345678) and we’ll connect you to our AI Agent.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -238,33 +268,8 @@ const Ambulance = () => {
             )}
           </div>
           <DialogFooter>
-            <Button
-              disabled={vapiLoading}
-              onClick={async () => {
-                if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
-                  toast({ title: "Invalid number", description: "Provide an E.164 number, e.g., +234..." });
-                  return;
-                }
-                try {
-                  setVapiLoading(true);
-                  const res = await startVapiCall({
-                    customerNumber: vapiNumber,
-                    metadata: { source: "AmbulancePage", coords },
-                    assistantOverrides: { emergency: true },
-                  });
-                  const callId = (res as any)?.data?.id;
-                  toast({ title: "Call started", description: callId ? `Call ID: ${callId}` : "The AI assistant is placing your call." });
-                  setVapiOpen(false);
-                  try { localStorage.setItem("vapi_last_number", vapiNumber); } catch {}
-                  refreshRecent();
-                } catch (e: any) {
-                  toast({ title: "Failed to start call", description: e.message || "Please try again." });
-                } finally {
-                  setVapiLoading(false);
-                }
-              }}
-            >
-              {vapiLoading ? "Starting..." : "Start AI Call"}
+            <Button disabled={vapiLoading} onClick={autoStartCall}>
+              {vapiLoading ? "Calling…" : "Call HOPE Now"}
             </Button>
           </DialogFooter>
         </DialogContent>
