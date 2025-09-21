@@ -28,22 +28,17 @@ const Ambulance = () => {
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [recentCalls, setRecentCalls] = useState<Array<{ id: string | null; to: string; at: string }>>([]);
   const callStartOnce = useRef(false);
+  const hopePhone = (import.meta.env.VITE_HOPE_PHONE_NUMBER as string) || "";
 
-  const autoStartCall = async () => {
+  const autoStartCall = async (overrideNumber?: string) => {
     const isValid = (n?: string | null) => !!n && n.startsWith("+") && n.length >= 8;
-    let target = vapiNumber;
+    // Hard-enforce default unless an override is explicitly provided (from the dialog)
+    let target = overrideNumber && isValid(overrideNumber)
+      ? overrideNumber
+      : ((import.meta.env.VITE_DEFAULT_CUSTOMER_NUMBER as string) || "");
     if (!isValid(target)) {
-      try {
-        const last = localStorage.getItem("vapi_last_number");
-        if (isValid(last)) target = last as string;
-      } catch {}
-    }
-    if (!isValid(target)) {
-      const fallback = (import.meta.env.VITE_DEFAULT_CUSTOMER_NUMBER as string) || "";
-      if (isValid(fallback)) target = fallback;
-    }
-    if (!isValid(target)) {
-      toast({ title: "Cannot start call", description: "No valid number configured. Set VITE_DEFAULT_CUSTOMER_NUMBER or enter a number once." });
+      toast({ title: "Cannot start call", description: "Default number not configured. Set VITE_DEFAULT_CUSTOMER_NUMBER or use a different number." });
+      setVapiOpen(true); // allow user to input when default missing
       return;
     }
     try {
@@ -56,8 +51,11 @@ const Ambulance = () => {
       const callId = (res as any)?.data?.id;
       toast({ title: "Call HOPE started", description: callId ? `Call ID: ${callId}` : "Connecting you to our AI agent now." });
       setVapiOpen(false);
-      try { localStorage.setItem("vapi_last_number", target); } catch {}
-      setVapiNumber(target);
+      // Do not persist number when hard-enforcing default unless user explicitly entered an override
+      if (overrideNumber && isValid(overrideNumber)) {
+        try { localStorage.setItem("vapi_last_number", overrideNumber); } catch {}
+        setVapiNumber(overrideNumber);
+      }
       refreshRecent();
     } catch (e: any) {
       toast({ title: "Failed to start call", description: e.message || "Please try again." });
@@ -125,9 +123,19 @@ const Ambulance = () => {
             <strong>Call HOPE</strong>, for your Emergency Assistance. We’ll connect you with our AI Agent immediately.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Button size="lg" className="bg-emergency hover:bg-emergency/90" disabled={vapiLoading} onClick={autoStartCall}>
+            <Button size="lg" className="bg-emergency hover:bg-emergency/90" disabled={vapiLoading} onClick={() => autoStartCall()}>
               <PhoneCall className="h-5 w-5 mr-2" /> {vapiLoading ? "Calling…" : "Call HOPE"}
             </Button>
+            <Button size="lg" variant="link" className="text-foreground" onClick={() => setVapiOpen(true)}>
+              Use a different number
+            </Button>
+            {hopePhone && (
+              <a href={`tel:${hopePhone}`}>
+                <Button size="lg" variant="outline" className="border-emergency text-emergency hover:bg-emergency hover:text-white">
+                  Call from my phone
+                </Button>
+              </a>
+            )}
             <a href="https://wa.me/2348000000000" target="_blank" rel="noreferrer">
               <Button size="lg" variant="outline" className="border-emergency text-emergency hover:bg-emergency hover:text-white">
                 WhatsApp Support
@@ -280,7 +288,16 @@ const Ambulance = () => {
             )}
           </div>
           <DialogFooter>
-            <Button disabled={vapiLoading} onClick={autoStartCall}>
+            <Button
+              disabled={vapiLoading}
+              onClick={() => {
+                if (!vapiNumber.startsWith("+") || vapiNumber.length < 8) {
+                  toast({ title: "Invalid number", description: "Provide an E.164 number, e.g., +234..." });
+                  return;
+                }
+                autoStartCall(vapiNumber);
+              }}
+            >
               {vapiLoading ? "Calling…" : "Call HOPE Now"}
             </Button>
           </DialogFooter>
@@ -288,7 +305,11 @@ const Ambulance = () => {
       </Dialog>
       <div className="container mx-auto px-4 mb-6">
         <p className="text-xs text-muted-foreground">
-          Prefer phone? <a href="tel:+234800EMERGENCY" className="underline">Dial +234800EMERGENCY</a>
+          Prefer phone? {hopePhone ? (
+            <a href={`tel:${hopePhone}`} className="underline">Dial {hopePhone}</a>
+          ) : (
+            <span>Dial your local emergency number</span>
+          )}
         </p>
       </div>
       <Separator className="my-8" />

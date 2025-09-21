@@ -38,6 +38,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_DEFAULT_CUSTOMER_NUMBER: ${{ secrets.VITE_DEFAULT_CUSTOMER_NUMBER }}
+          VITE_HOPE_PHONE_NUMBER: ${{ secrets.VITE_HOPE_PHONE_NUMBER }}
         run: |
           echo "Building with base=/${REPO_NAME}/"
           npm run build -- --base=/${REPO_NAME}/
