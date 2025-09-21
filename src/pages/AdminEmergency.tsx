@@ -88,6 +88,105 @@ const AdminEmergency = () => {
   const total = data?.count || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  // Stats and charts data: last 30 days (or filter range if set)
+  const { data: statsRows, isLoading: statsLoading } = useQuery({
+    queryKey: ["adminEmergencyStats", fromDate, toDate, authorized],
+    enabled: authorized,
+    queryFn: async () => {
+      const now = new Date();
+      const since = fromDate ? new Date(fromDate) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const until = toDate ? new Date(toDate) : now;
+      const { data, error } = await supabase
+        .from("emergency_calls")
+        .select("id,created_at,source,coords,to_number")
+        .gte("created_at", since.toISOString())
+        .lte("created_at", new Date(until.getTime() + 24 * 60 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: true })
+        .limit(2000);
+      if (error) throw error;
+      return (data as EmergencyCall[]) || [];
+    },
+    staleTime: 30_000,
+  });
+
+  const stats = useMemo(() => {
+    const rows = (statsRows as any as EmergencyCall[]) || [];
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const last7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const byDay = new Map<string, number>();
+    const bySource = new Map<string, number>();
+    let callsToday = 0;
+    let callsLast7 = 0;
+    let withCoords = 0;
+    const uniqueNumbers = new Set<string>();
+
+    rows.forEach((r) => {
+      const day = new Date(r.created_at).toISOString().slice(0, 10);
+      byDay.set(day, (byDay.get(day) || 0) + 1);
+      const src = (r as any).source || "Unknown";
+      bySource.set(src, (bySource.get(src) || 0) + 1);
+      if ((r as any).coords) withCoords += 1;
+      if ((r as any).to_number) uniqueNumbers.add((r as any).to_number);
+      if (day === todayKey) callsToday += 1;
+      if (new Date(r.created_at) >= last7) callsLast7 += 1;
+    });
+
+    // Build 30-day range
+    const days: { date: string; count: number }[] = [];
+    const start = rows.length
+      ? new Date(Math.min(...rows.map((r) => new Date(r.created_at).getTime())))
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = new Date();
+    const cursor = new Date(start);
+    cursor.setHours(0, 0, 0, 0);
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      days.push({ date: key, count: byDay.get(key) || 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const sourceList = Array.from(bySource.entries()).map(([name, value]) => ({ name, value }));
+    const total = rows.length;
+    return { total, callsToday, callsLast7, withCoords, uniqueNumbers: uniqueNumbers.size, days, sourceList };
+  }, [statsRows]);
+
+  const maxDay = Math.max(1, ...(stats?.days || []).map((d) => d.count));
+
+  const Sparkline: React.FC<{ data: { date: string; count: number }[]; width?: number; height?: number }> = ({ data, width = 560, height = 80 }) => {
+    if (!data || data.length === 0) return <div className="text-xs text-muted-foreground">No data</div>;
+    const max = Math.max(1, ...data.map((d) => d.count));
+    const stepX = width / Math.max(1, data.length - 1);
+    const points = data.map((d, i) => {
+      const x = i * stepX;
+      const y = height - (d.count / max) * (height - 6) - 3; // padding
+      return `${x},${y}`;
+    });
+    const path = `M ${points[0]} L ${points.slice(1).join(" ")}`;
+    return (
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full">
+        <path d={path} fill="none" stroke="currentColor" className="text-primary" strokeWidth={2} />
+      </svg>
+    );
+  };
+
+  const BarList: React.FC<{ items: { name: string; value: number }[] }> = ({ items }) => {
+    if (!items || items.length === 0) return <div className="text-xs text-muted-foreground">No data</div>;
+    const max = Math.max(1, ...items.map((i) => i.value));
+    return (
+      <div className="space-y-2">
+        {items.map((i) => (
+          <div key={i.name} className="grid grid-cols-6 items-center gap-2">
+            <div className="col-span-2 text-sm text-foreground truncate">{i.name}</div>
+            <div className="col-span-3 h-2 bg-muted rounded">
+              <div className="h-2 bg-primary rounded" style={{ width: `${(i.value / max) * 100}%` }} />
+            </div>
+            <div className="text-right text-sm tabular-nums">{i.value}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -105,6 +204,50 @@ const AdminEmergency = () => {
           </Card>
         ) : (
           <>
+            {/* Summary */}
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Summary {statsLoading && <span className="text-xs text-muted-foreground">(loading…)</span>}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-4 gap-4 mb-6">
+                  <div className="p-4 rounded-lg border">
+                    <div className="text-xs text-muted-foreground">Total (range)</div>
+                    <div className="text-2xl font-semibold">{stats?.total ?? 0}</div>
+                  </div>
+                  <div className="p-4 rounded-lg border">
+                    <div className="text-xs text-muted-foreground">Today</div>
+                    <div className="text-2xl font-semibold">{stats?.callsToday ?? 0}</div>
+                  </div>
+                  <div className="p-4 rounded-lg border">
+                    <div className="text-xs text-muted-foreground">Last 7 days</div>
+                    <div className="text-2xl font-semibold">{stats?.callsLast7 ?? 0}</div>
+                  </div>
+                  <div className="p-4 rounded-lg border">
+                    <div className="text-xs text-muted-foreground">Unique numbers</div>
+                    <div className="text-2xl font-semibold">{stats?.uniqueNumbers ?? 0}</div>
+                  </div>
+                </div>
+                <div className="grid lg:grid-cols-2 gap-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-medium">Daily calls</div>
+                      <div className="text-xs text-muted-foreground">max {maxDay}</div>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <Sparkline data={stats?.days || []} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium mb-2">By source</div>
+                    <div className="rounded-md border p-3">
+                      <BarList items={(stats?.sourceList || []).sort((a,b)=>b.value-a.value)} />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle>Filters</CardTitle>
